@@ -24,6 +24,21 @@ app.get('/users', (req, res) => {
   res.json(users);
 });
 
+// Yeni kullanıcı ekleme endpoint’i
+app.post('/users', (req, res) => {
+  const newUser = req.body;
+
+  if (!newUser || !newUser.name) {
+    return res.status(400).send('Kullanıcı adı zorunludur.');
+  }
+
+  // Simüle amaçlı rastgele id atıyoruz
+  newUser.id = Math.floor(Math.random() * 1000) + 4;
+
+  res.status(201).json({ message: 'Kullanıcı başarıyla eklendi', user: newUser });
+});
+
+
 app.listen(3000, () => {
   console.log('Sunucu 3000 portunda çalışıyor...');
 });
