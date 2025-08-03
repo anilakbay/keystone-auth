@@ -1,72 +1,115 @@
-const express = require('express');
-const app = express();
+const express = require('express'); // Express ile sunucu oluşturmak için gerekli paket
+const { poolPromise } = require('./db'); // MSSQL veritabanına bağlanmak için havuz nesnesi
+const sql = require('mssql'); // MSSQL sorguları için gerekli paket
 
-app.use(express.json());
+const app = express(); // Yeni bir Express uygulaması başlatıyoruz
+app.use(express.json()); // Gelen isteklerdeki JSON verileri otomatik olarak parse et
 
-// Gelen istekleri konsola yazdırıyoruz, böylece hangi endpoint çağrıldı takip edilebilir.
+// Her gelen isteği konsola yazdıran basit bir log fonksiyonu
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
   next();
 });
 
-// Ana sayfa endpoint'i: Sunucu çalışıyor mu kontrolü için basit bir mesaj döner.
+// Ana endpoint: Sunucunun çalışıp çalışmadığını kontrol etmek için
 app.get('/', (req, res) => {
   res.send('Merhaba Dünya');
 });
 
-// Kullanıcı verilerini tuttuğumuz basit bir liste
-const users = [
-  { id: 1, name: 'Anıl Akbay' },
-  { id: 2, name: 'Ahmet Yılmaz' },
-  { id: 3, name: 'Ayşe Demir' }
-];
-
 // Tüm kullanıcıları listeleyen endpoint
-app.get('/users', (req, res) => {
-  res.json(users);
+app.get('/users', async (req, res) => {
+  try {
+    const pool = await poolPromise; // Veritabanı bağlantısını al
+    const result = await pool.request().query('SELECT * FROM Users'); // Kullanıcıları çek
+    res.json(result.recordset); // Sonucu JSON olarak döndür
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Veritabanı hatası');
+  }
 });
 
-// Yeni kullanıcı eklemek için kullanılan endpoint
-app.post('/users', (req, res) => {
-  const newUser = req.body;
-
-  // Eğer isim bilgisi yoksa kullanıcı eklenmez, hata mesajı döner
-  if (!newUser || !newUser.name) {
+// Yeni kullanıcı ekleyen endpoint
+app.post('/users', async (req, res) => {
+  const newUser = req.body; // İstekten gelen kullanıcı verisi
+  if (!newUser?.name) { // Kullanıcı adı yoksa hata döndür
     return res.status(400).send('Kullanıcı adı zorunludur.');
   }
-
-  // Yeni kullanıcıya benzersiz bir ID atıyoruz
-  newUser.id = Math.floor(Math.random() * 1000) + 4;
-
-  res.status(201).json({ message: 'Kullanıcı başarıyla eklendi', user: newUser });
-});
-
-// ID'ye göre tek kullanıcı bilgisi almak için endpoint
-app.get('/users/:id', (req, res) => {
-  const id = parseInt(req.params.id);
-  const user = users.find(u => u.id === id);
-
-  if (!user) {
-    return res.status(404).send('Kullanıcı bulunamadı.');
+  try {
+    const pool = await poolPromise;
+    const insertQuery = `
+      INSERT INTO Users (name) OUTPUT INSERTED.Id VALUES (@name)
+    `;
+    const result = await pool.request()
+      .input('name', sql.VarChar, newUser.name)
+      .query(insertQuery);
+    newUser.id = result.recordset[0].Id; // Eklenen kullanıcının ID'sini al
+    res.status(201).json({ message: 'Kullanıcı başarıyla eklendi', user: newUser });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Veritabanı hatası');
   }
-
-  res.json(user);
 });
 
-// ID'ye göre kullanıcı silme işlemini simüle eden endpoint
-app.delete('/users/:id', (req, res) => {
-  const id = parseInt(req.params.id);
-  const userIndex = users.findIndex(u => u.id === id);
-
-  if (userIndex === -1) {
-    return res.status(404).send('Kullanıcı bulunamadı.');
+// Belirli bir ID'ye sahip kullanıcıyı getiren endpoint
+app.get('/users/:id', async (req, res) => {
+  const id = parseInt(req.params.id); // URL'den gelen ID'yi al
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input('id', sql.Int, id)
+      .query('SELECT * FROM Users WHERE Id = @id');
+    if (result.recordset.length === 0) {
+      return res.status(404).send('Kullanıcı bulunamadı.');
+    }
+    res.json(result.recordset[0]); // Kullanıcıyı JSON olarak döndür
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Veritabanı hatası');
   }
-
-  // Gerçek uygulamada burası kullanıcıyı listeden çıkarır
-  res.send(`ID'si ${id} olan kullanıcı başarıyla silindi (simülasyon).`);
 });
 
-// 3000 portunda sunucuyu başlatıyoruz
+// Belirli bir ID'ye sahip kullanıcıyı silen endpoint
+app.delete('/users/:id', async (req, res) => {
+  const id = parseInt(req.params.id); // Silinecek kullanıcının ID'si
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input('id', sql.Int, id)
+      .query('DELETE FROM Users WHERE Id = @id');
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).send('Kullanıcı bulunamadı.');
+    }
+    res.send(`ID'si ${id} olan kullanıcı başarıyla silindi.`);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Veritabanı hatası');
+  }
+});
+
+app.listen(3000, () => {
+  console.log('Sunucu 3000 portunda çalışıyor...');
+});
+app.delete('/users/:id', async (req, res) => {
+  const id = parseInt(req.params.id);
+
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input('id', sql.Int, id) // ID parametresini güvenli şekilde ekliyoruz
+      .query('DELETE FROM Users WHERE Id = @id');
+
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).send('Kullanıcı bulunamadı.');
+    }
+
+    res.send(`ID'si ${id} olan kullanıcı başarıyla silindi.`);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Veritabanı hatası');
+  }
+});
+
+// -------------------- SUNUCUYU BAŞLAT --------------------
 app.listen(3000, () => {
   console.log('Sunucu 3000 portunda çalışıyor...');
 });
