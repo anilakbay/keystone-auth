@@ -1,18 +1,9 @@
 const sql = require('mssql');
-
-const config = {
-  user: 'sa',          // SQL Server kullanıcı adı
-  password: 'password',// Şifren
-  server: 'localhost', // Sunucu adresi, local ise localhost
-  database: 'KeyStoneDB',  // Veritabanı adı (MSSQL'deki ile aynı olmalı)
-  options: {
-    trustServerCertificate: true // Localde sertifika hatasını engellemek için
-  }
-};
+const dbConfig = require('./config/dbConfig');
 
 let poolPromise;
 try {
-  poolPromise = new sql.ConnectionPool(config)
+  poolPromise = new sql.ConnectionPool(dbConfig)
     .connect()
     .then(pool => {
       console.log('MSSQL bağlantısı başarılı');

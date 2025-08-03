@@ -1,15 +1,29 @@
 const express = require('express');
 const router = express.Router();
 const userModel = require('../models/userModel');
+const { success, error } = require('../utils/response');
 
-// Tüm kullanıcıları listele
+// Tüm kullanıcıları listele (sayfalama destekli)
 router.get('/', async (req, res) => {
   try {
-    const users = await userModel.getAllUsers();
-    res.json(users);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    
+    if (page < 1 || limit < 1) {
+      return error(res, 'Geçersiz sayfa veya limit değeri', 400);
+    }
+    
+    const users = await userModel.getAllUsers(page, limit);
+    success(res, {
+      users,
+      pagination: {
+        page,
+        limit
+      }
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).send(err.message || 'Veritabanı hatası');
+    error(res, err.message || 'Veritabanı hatası', 500);
   }
 });
 
@@ -17,44 +31,52 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const { name } = req.body;
   if (!name) {
-    return res.status(400).send('Kullanıcı adı zorunludur.');
+    return error(res, 'Kullanıcı adı zorunludur.', 400);
   }
   try {
     const user = await userModel.createUser(name);
-    res.status(201).json({ message: 'Kullanıcı başarıyla eklendi', user });
+    success(res, { message: 'Kullanıcı başarıyla eklendi', user }, 201);
   } catch (err) {
     console.error(err);
-    res.status(500).send(err.message || 'Veritabanı hatası');
+    error(res, err.message || 'Veritabanı hatası', 500);
   }
 });
 
 // Belirli kullanıcıyı getir
 router.get('/:id', async (req, res) => {
   const id = parseInt(req.params.id);
+  if (isNaN(id)) {
+    return error(res, 'Geçersiz ID', 400);
+  }
+  
   try {
     const user = await userModel.getUserById(id);
     if (!user) {
-      return res.status(404).send('Kullanıcı bulunamadı.');
+      return error(res, 'Kullanıcı bulunamadı.', 404);
     }
-    res.json(user);
+    success(res, user);
   } catch (err) {
     console.error(err);
-    res.status(500).send(err.message || 'Veritabanı hatası');
+    error(res, err.message || 'Veritabanı hatası', 500);
   }
 });
 
 // Kullanıcıyı sil
 router.delete('/:id', async (req, res) => {
   const id = parseInt(req.params.id);
+  if (isNaN(id)) {
+    return error(res, 'Geçersiz ID', 400);
+  }
+  
   try {
     const affected = await userModel.deleteUser(id);
     if (affected === 0) {
-      return res.status(404).send('Kullanıcı bulunamadı.');
+      return error(res, 'Kullanıcı bulunamadı.', 404);
     }
-    res.send(`ID'si ${id} olan kullanıcı başarıyla silindi.`);
+    success(res, `ID'si ${id} olan kullanıcı başarıyla silindi.`);
   } catch (err) {
     console.error(err);
-    res.status(500).send(err.message || 'Veritabanı hatası');
+    error(res, err.message || 'Veritabanı hatası', 500);
   }
 });
 
@@ -62,18 +84,24 @@ router.delete('/:id', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const id = parseInt(req.params.id);
   const { name } = req.body;
-  if (!name) {
-    return res.status(400).send('Kullanıcı adı zorunludur.');
+  
+  if (isNaN(id)) {
+    return error(res, 'Geçersiz ID', 400);
   }
+  
+  if (!name) {
+    return error(res, 'Kullanıcı adı zorunludur.', 400);
+  }
+  
   try {
     const affected = await userModel.updateUser(id, name);
     if (affected === 0) {
-      return res.status(404).send('Kullanıcı bulunamadı.');
+      return error(res, 'Kullanıcı bulunamadı.', 404);
     }
-    res.send(`ID'si ${id} olan kullanıcının adı başarıyla güncellendi.`);
+    success(res, `ID'si ${id} olan kullanıcının adı başarıyla güncellendi.`);
   } catch (err) {
     console.error(err);
-    res.status(500).send(err.message || 'Veritabanı hatası');
+    error(res, err.message || 'Veritabanı hatası', 500);
   }
 });
 
