@@ -1,29 +1,33 @@
-const express = require('express'); // Express ile sunucu oluşturmak için gerekli paket
-const { poolPromise } = require('./db'); // MSSQL veritabanına bağlanmak için havuz nesnesi
-const sql = require('mssql'); // MSSQL sorguları için gerekli paket
+const express = require('express');
+const usersRouter = require('./routes/users');
 
-const app = express(); // Yeni bir Express uygulaması başlatıyoruz
-app.use(express.json()); // Gelen isteklerdeki JSON verileri otomatik olarak parse et
+const app = express();
+app.use(express.json());
 
-// Her gelen isteği konsola yazdıran basit bir log fonksiyonu
+// Basit log middleware
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
   next();
 });
 
-// Ana endpoint: Sunucunun çalışıp çalışmadığını kontrol etmek için
+// Ana endpoint
 app.get('/', (req, res) => {
   res.send('Merhaba Dünya');
 });
 
-// Tüm kullanıcıları listeleyen endpoint
-app.get('/users', async (req, res) => {
-  try {
-    const pool = await poolPromise; // Veritabanı bağlantısını al
-    const result = await pool.request().query('SELECT * FROM Users'); // Kullanıcıları çek
-    res.json(result.recordset); // Sonucu JSON olarak döndür
-  } catch (err) {
-    console.error(err);
+// Kullanıcı rotalarını bağla
+app.use('/users', usersRouter);
+
+// Hata yönetimi middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send('Bir hata oluştu!');
+});
+
+// Sunucuyu başlat
+app.listen(3000, () => {
+  console.log('Sunucu 3000 portunda çalışıyor...');
+});
     res.status(500).send('Veritabanı hatası');
   }
 });
@@ -86,23 +90,23 @@ app.delete('/users/:id', async (req, res) => {
   }
 });
 
-app.listen(3000, () => {
-  console.log('Sunucu 3000 portunda çalışıyor...');
-});
-app.delete('/users/:id', async (req, res) => {
+// Kullanıcı adını güncelleyen endpoint
+app.put('/users/:id', async (req, res) => {
   const id = parseInt(req.params.id);
-
+  const { name } = req.body;
+  if (!name) {
+    return res.status(400).send('Kullanıcı adı zorunludur.');
+  }
   try {
     const pool = await poolPromise;
     const result = await pool.request()
-      .input('id', sql.Int, id) // ID parametresini güvenli şekilde ekliyoruz
-      .query('DELETE FROM Users WHERE Id = @id');
-
+      .input('id', sql.Int, id)
+      .input('name', sql.VarChar, name)
+      .query('UPDATE Users SET name = @name WHERE Id = @id');
     if (result.rowsAffected[0] === 0) {
       return res.status(404).send('Kullanıcı bulunamadı.');
     }
-
-    res.send(`ID'si ${id} olan kullanıcı başarıyla silindi.`);
+    res.send(`ID'si ${id} olan kullanıcının adı başarıyla güncellendi.`);
   } catch (err) {
     console.error(err);
     res.status(500).send('Veritabanı hatası');
